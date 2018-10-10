@@ -11,6 +11,22 @@ else:
     from ConfigParser import ConfigParser
 
 
+class Project(object):
+
+    _path = ""
+    _URL = ""
+    _name = ""
+
+    def __init__(self, commitfilepath):
+        self.checkcommitfile(commitfilepath)
+
+    def checkcommitfile(self, commitfilepath):
+        commits = open(commitfilepath).read().splitlines()
+        log.debug("These were the found commits:")
+        for value in commits:
+            log.debug("'%s'" % value.split(" "))
+
+
 class Configfile(object):
     """ An object for the configuration file
 
@@ -43,20 +59,31 @@ class Configfile(object):
             parser = ConfigParser()
             parser.read(self._path)
             self._conf = {section: dict(parser.items(section)) for section in parser.sections()}
-            if self._conf == {}:
-                log.fatal("No values found in the configuration file.")
-                return 1
-            foundglobal = False
-            for section in self._conf.keys():
-                if section == "global":
-                    foundglobal = True
-            if foundglobal is False:
-                log.fatal("The 'global' section could not be found in the config file. It is required.")
-                return 1
         except Exception as e:
+            # TODO: ConfigParserException
             e = str(e).splitlines()[0]
             log.fatal("ConfigParser Error: " + str(e))
             return 1
+
+        if self._conf == {}:
+            log.fatal("No values found in the configuration file.")
+            return 1
+
+        foundglobal = False
+        for section in self._conf.keys():
+            if section == "global":
+                foundglobal = True
+        if foundglobal is False:
+            log.fatal("The 'global' section could not be found in the config file. It is required.")
+            return 1
+
+        # Debug Output for all sections and values found in them
+        for section in self._conf:
+            log.debug("Section from the config file: '%s'" % section)
+            options = []
+            for value in self._conf[section]:
+                options.append(value)
+            log.debug("Options in this section: %s" % str(options))
         return 0
 
     def getvalue(self, section, option):
@@ -67,16 +94,16 @@ class Configfile(object):
             option (str): option to read from the section
 
         """
+        requiredvalues = ["smtphost", "smtpport", "smtppassword", "mailprefix"]
         try:
             return self._conf[section][option]
         except KeyError:
-            if ("svnadmin" in option) or ("svn" in option):
-                log.warning("'%s' not found in '%s'. Using default." % (option, section),
-                            extra={"currentname": "ConfigFile"})
-            else:
-                log.warning("The '%s' option could not be found in section '%s'." % (option, section),
-                            extra={"currentname": "ConfigFile"})
-                return 1
+            for value in requiredvalues:
+                if option == value:
+                    log.fatal("Option '%s' not found in '%s'. It is required. Exiting...")
+                    return 1
+                else:
+                    log.warning("Option '%s' not found in '%s'.")
 
 
 def get_cl_options():
@@ -91,7 +118,14 @@ def get_cl_options():
         metavar="",
         required=True,
         help="Full path to the configuration file (required).")
-
+    parser.add_argument(
+        "-C",
+        "--commit",
+        action="store",
+        dest="commitfile",
+        metavar="",
+        required=True,
+        help="Full path to the configuration file (required).")
     arguments = parser.parse_args()
     return arguments
 
@@ -105,15 +139,16 @@ def init_log():
         except OSError as e:
             sys.stderr.write("Error creating log directory: " + str(e))
             return 1
-    logfile = os.path.join(logdir, "dump.log")
+    logfile = os.path.join(logdir, "notify.log")
     try:
         logging.basicConfig(filename=logfile,
-                            format="%(asctime)s %(levelname)-8s %(currentname)-10s %(message)s",
+                            format="%(asctime)s %(levelname)-8s %(module)-6s %(message)s",
                             level=os.environ.get("LOGLEVEL", "DEBUG"))
     except IOError as e:
         sys.stderr.write("Error creating log file: " + str(e))
         return 1
     log = logging.getLogger("SVN Notification Log")
+    log.debug("#" * 20 + " D E B U G M O D E " + "#" * 20)
     return 0
 
 
@@ -127,4 +162,6 @@ if __name__ == "__main__":
         sys.exit(1)
     args = get_cl_options()
     confile = Configfile(args.configfile)
+    confile.importvalues()
+    project = Project(args.commitfile)
     sys.exit(main())
