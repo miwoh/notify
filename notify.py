@@ -1,8 +1,10 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
+import subprocess
 import argparse
 import smtplib
 import logging
+import datetime
 import sys
 import os
 from email.mime.multipart import MIMEMultipart
@@ -15,16 +17,8 @@ else:
 
 class Project(object):
 
-    _path = ""
-    _URL = ""
-    _name = ""
-    _mailhost = ""
-    _mailport = ""
-    _mailsender = ""
-    _mailpass = ""
-    _mailrecipients = ""
-    _mailsubject = ""
-    _mailmsg = ""
+    _revision = ""
+    _author = ""
 
     def __init__(self, projectname):
         self._name = projectname
@@ -37,8 +31,27 @@ class Project(object):
         self._mailsubject = confile.getvalue(self._name, "mailsubject")
         self._mailmsg = MIMEMultipart('alternative')
 
+    def getsvninfos(self):
+        svnlookproc = subprocess.Popen(["svnlook", "author", "-r", args.rev, args.repo],
+                                       stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        out, err = svnlookproc.communicate()
+        if svnlookproc.returncode != 0:
+            log.error("Error determining author. Exiting...")
+            return 99001
+        else:
+            self._author = str(out).rstrip()
+            return 0
+
     def buildmsgbody(self):
-        html = """\
+        if self.getsvninfos() != 0:
+            return 99001
+        # TODO: Add timezone, somehow, since python thinks that's useless information apparently
+        date = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S") + " CET"
+        bodyfile = "htmlbody"
+        body = open(bodyfile).read()
+        html = body.format(mailsubject=self._mailsubject, url=self._URL, name=self._name,
+                           author=self._author, date=date)
+        '''html = """\
         <html>
           <head></head>
           <body>
@@ -48,13 +61,13 @@ class Project(object):
             </p>
           </body>
         </html>
-        """
+        """'''
         text = "Python test mäil"
         part1 = MIMEText(text, 'plain', 'utf-8')
         part2 = MIMEText(html, 'html', 'utf-8')
         self._mailmsg.attach(part1)
         self._mailmsg.attach(part2)
-        self.mail()
+        #self.mail()
 
     def mail(self):
         fromaddr = self._mailsender
@@ -159,6 +172,7 @@ class Configfile(object):
     @staticmethod
     def createprojects(commitfilepath):
         commits = open(commitfilepath).read().splitlines()
+        commitfile = open("commitfile", "w")
         # DEBUG Output
         log.debug("These were the found commits:")
         for value in commits:
@@ -166,12 +180,27 @@ class Configfile(object):
         # creates an project object for each unique project found in the commit file
         for section in confile.getsections():
             createdprojects = []
+            commitfile.write("<table>\n")
+            # TODO: Put that somewhere else, it shouldnt be in Configfile
             for commit in commits:
+                action = commit.split(" ")[0]
                 commit = commit.split(" ")[-1]
+                if action.upper() == "A":
+                    commitfile.write("<tr style='mso-yfti-irow:0;mso-yfti-firstrow:yes'><td style='padding:4.0pt 4.0pt 4.0pt 4.0pt'><p>Added</p></td>\n")
+                elif action.upper() == "U":
+                    commitfile.write("<tr style='mso-yfti-irow:0;mso-yfti-firstrow:yes'><td style='padding:4.0pt 4.0pt 4.0pt 4.0pt'><p>Modified</p></td>\n")
+                elif action.upper() == "D":
+                    commitfile.write("<tr style='mso-yfti-irow:0;mso-yfti-firstrow:yes'><td style='padding:4.0pt 4.0pt 4.0pt 4.0pt'><p>Deleted</p></td>\n")
+                if commit.endswith("/"):
+                    commitfile.write("<td style='padding:4.0pt 4.0pt 4.0pt 4.0pt'><p>&lt;Directory&gt;</p></td>\n")
+                else:
+                    commitfile.write("<td style='padding:4.0pt 4.0pt 4.0pt 4.0pt'><p>" + commit.split("/")[-1] + "</p></td>\n")
                 if section in commit and section not in createdprojects:
                     proj = Project(section)
                     createdprojects.append(section)
-                    proj.buildmsgbody()
+                    if proj.buildmsgbody() != 0:
+                        return 99001
+            commitfile.write("</table>\n")
 
 
 def get_cl_options():
@@ -194,6 +223,22 @@ def get_cl_options():
         metavar="",
         required=True,
         help="Full path to the configuration file (required).")
+    parser.add_argument(
+        "-r",
+        "--revision",
+        action="store",
+        dest="rev",
+        metavar="",
+        required=True,
+        help="Revision of the current commit (required).")
+    parser.add_argument(
+        "-R",
+        "--repository",
+        action="store",
+        dest="repo",
+        metavar="",
+        required=True,
+        help="Repository to which the current commit wrote (required).")
     arguments = parser.parse_args()
     return arguments
 
