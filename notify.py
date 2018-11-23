@@ -23,7 +23,7 @@ class Project(object):
         self._name = projectname
 
     def create(self):
-        self._URL = confile.getvalue("global", "url") + self._name
+        self._URL = confile.getvalue("global", "urlprefix") + self._name
         self._mailrecipients = confile.getvalue(self._name, "mailrecipients")
         self._mailsubject = confile.getvalue(self._name, "mailsubject")
 
@@ -101,7 +101,7 @@ class Configfile(object):
             option (str): option to read from the section
 
         """
-        requiredvalues = ["smtphost", "smtpport", "smtppassword", "mailprefix"]
+        requiredvalues = ["smtphost", "smtpport", "smtppassword", "mailprefix", "urlprefix"]
         try:
             return self._conf[section][option]
         except KeyError:
@@ -128,6 +128,7 @@ class Configfile(object):
                     proj = Project(section)
                     proj.create()
                     createdprojects.append(section)
+
 
 def get_cl_options():
     """ Builds the parser and returns the given cl argument/s """
@@ -175,10 +176,6 @@ def init_log():
     return 0
 
 
-#def dostuff():
-    #print(confile.getsections())
-
-
 def main():
     return 0
 
@@ -191,5 +188,4 @@ if __name__ == "__main__":
     confile = Configfile(args.configfile)
     confile.importvalues()
     confile.createprojects(args.commitfile)
-    #dostuff()
     sys.exit(main())
