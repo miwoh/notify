@@ -16,15 +16,16 @@ class Project(object):
     _path = ""
     _URL = ""
     _name = ""
+    _mailrecipients = ""
+    _mailsubject = ""
 
-    def __init__(self, commitfilepath):
-        self.checkcommitfile(commitfilepath)
+    def __init__(self, projectname):
+        self._name = projectname
 
-    def checkcommitfile(self, commitfilepath):
-        commits = open(commitfilepath).read().splitlines()
-        log.debug("These were the found commits:")
-        for value in commits:
-            log.debug("'%s'" % value.split(" "))
+    def create(self):
+        self._URL = confile.getvalue("global", "url") + self._name
+        self._mailrecipients = confile.getvalue(self._name, "mailrecipients")
+        self._mailsubject = confile.getvalue(self._name, "mailsubject")
 
 
 class Configfile(object):
@@ -86,6 +87,12 @@ class Configfile(object):
             log.debug("Options in this section: %s" % str(options))
         return 0
 
+    def getsections(self):
+        sections = []
+        for section in self._conf:
+            sections.append(section)
+        return sections
+
     def getvalue(self, section, option):
         """ Returns the chosen option from the chosen section
 
@@ -103,8 +110,24 @@ class Configfile(object):
                     log.fatal("Option '%s' not found in '%s'. It is required. Exiting...")
                     return 1
                 else:
-                    log.warning("Option '%s' not found in '%s'.")
+                    log.warning("Option '%s' not found in '%s'." % (option, section))
 
+    @staticmethod
+    def createprojects(commitfilepath):
+        commits = open(commitfilepath).read().splitlines()
+        # DEBUG Output
+        log.debug("These were the found commits:")
+        for value in commits:
+            log.debug("'%s'" % value.split(" "))
+        # creates an project object for each unique project found in the commit file
+        for section in confile.getsections():
+            createdprojects = []
+            for commit in commits:
+                commit = commit.split(" ")[-1]
+                if section in commit and section not in createdprojects:
+                    proj = Project(section)
+                    proj.create()
+                    createdprojects.append(section)
 
 def get_cl_options():
     """ Builds the parser and returns the given cl argument/s """
@@ -152,6 +175,10 @@ def init_log():
     return 0
 
 
+#def dostuff():
+    #print(confile.getsections())
+
+
 def main():
     return 0
 
@@ -163,5 +190,6 @@ if __name__ == "__main__":
     args = get_cl_options()
     confile = Configfile(args.configfile)
     confile.importvalues()
-    project = Project(args.commitfile)
+    confile.createprojects(args.commitfile)
+    #dostuff()
     sys.exit(main())
