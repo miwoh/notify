@@ -1,3 +1,5 @@
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
 import argparse
 import smtplib
 import logging
@@ -16,16 +18,58 @@ class Project(object):
     _path = ""
     _URL = ""
     _name = ""
+    _mailhost = ""
+    _mailport = ""
+    _mailsender = ""
+    _mailpass = ""
     _mailrecipients = ""
     _mailsubject = ""
+    _mailmsg = ""
 
     def __init__(self, projectname):
         self._name = projectname
-
-    def create(self):
         self._URL = confile.getvalue("global", "urlprefix") + self._name
+        self._mailhost = confile.getvalue("global", "smtphost")
+        self._mailport = confile.getvalue("global", "smtpport")
+        self._mailsender = confile.getvalue("global", "smtpuser")
+        self._mailpass = confile.getvalue("global", "smtppassword")
         self._mailrecipients = confile.getvalue(self._name, "mailrecipients")
         self._mailsubject = confile.getvalue(self._name, "mailsubject")
+        self._mailmsg = MIMEMultipart('alternative')
+
+    def buildmsgbody(self):
+        html = """\
+        <html>
+          <head></head>
+          <body>
+            <p>Test Mail<br>
+               Python Test Mail<br>
+               Here is the <a href="http://www.python.org">link</a> you wänted.
+            </p>
+          </body>
+        </html>
+        """
+        text = "Python test mäil"
+        part1 = MIMEText(text, 'plain', 'utf-8')
+        part2 = MIMEText(html, 'html', 'utf-8')
+        self._mailmsg.attach(part1)
+        self._mailmsg.attach(part2)
+        self.mail()
+
+    def mail(self):
+        fromaddr = self._mailsender
+        toaddr = self._mailrecipients
+        self._mailmsg['From'] = fromaddr
+        self._mailmsg['To'] = toaddr
+        self._mailmsg['Subject'] = self._mailsubject
+        server = smtplib.SMTP(self._mailhost, self._mailport)
+        server.ehlo()
+        server.starttls()
+        server.ehlo()
+        # TODO: en/decrypt plain password
+        server.login(self._mailsender, self._mailpass)
+        server.sendmail(fromaddr, toaddr, self._mailmsg.as_string())
+        server.quit()
 
 
 class Configfile(object):
@@ -126,8 +170,8 @@ class Configfile(object):
                 commit = commit.split(" ")[-1]
                 if section in commit and section not in createdprojects:
                     proj = Project(section)
-                    proj.create()
                     createdprojects.append(section)
+                    proj.buildmsgbody()
 
 
 def get_cl_options():
